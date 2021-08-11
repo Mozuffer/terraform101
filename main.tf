@@ -1,41 +1,39 @@
 provider "aws" {
-  region     = "eu-west-3"
+  region = "eu-west-3"
 }
 
-variable "cidr_block" {
-  description = "cidr block for vpc and subenets"
-  type = list(object({
-    cidr_block = string
-    name       = string
-  }))
-}
-
-variable "environment_name" {
-  description = "environment name stage or prod"
-}
-
-resource "aws_vpc" "development-vpc" {
-  cidr_block = var.cidr_block[0].cidr_block
+resource "aws_vpc" "myapp-vpc" {
+  cidr_block = var.vpc_cidr_block
   tags = {
-    Name             = var.cidr_block[0].name
-    environment_name = var.environment_name
+    Name = "${var.environment_name}-vpc"
   }
 }
 
-resource "aws_subnet" "dev-subnet-1" {
-  vpc_id            = aws_vpc.development-vpc.id
-  cidr_block        = var.cidr_block[1].cidr_block
-  availability_zone = "eu-west-3a"
-  tags = {
-    Name             = var.cidr_block[1].name
-    environment_name = var.environment_name
-  }
+module "myapp_subnet" {
+  source = "./modules/subnet"  
+  vpc_id = "${aws_vpc.myapp-vpc.id}"
+  avail_zone = var.avail_zone
+  subnet_cidr_block = var.subnet_cidr_block
+  environment_name = var.environment_name
+  vpc_default_route_table_id = "${aws_vpc.myapp-vpc.default_route_table_id}"
 }
 
-output "aws-vpc-id" {
-  value = aws_vpc.development-vpc.id
+module "app_server" {
+  source = "./modules/webserver"
+  vpc_id = "${aws_vpc.myapp-vpc.id}"
+  environment_name = var.environment_name
+  subnet_id = module.myapp_subnet.subnet.id
+  ssh_public_key = "~/.ssh/id_rsa.pub"
 }
 
-output "aws-subnet-id" {
-  value = aws_subnet.dev-subnet-1.id
+output "myapp-vpc-id" {
+  value = aws_vpc.myapp-vpc.id
+}
+
+output "myapp-subnet-id" {
+  value = module.myapp_subnet.subnet.id
+}
+
+output "public_ip_address" {
+  value = module.app_server.instance_ip_address
 }
